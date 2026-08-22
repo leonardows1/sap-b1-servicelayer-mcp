@@ -89,12 +89,53 @@ Reiniciar opencode después de guardar la configuración.
 
 ## Estructura
 
+Arquitectura hexagonal pragmática (ESM, sin framework): el dominio y los
+casos de uso no conocen el transporte MCP ni el HTTP; la infraestructura
+implementa el puerto `ServiceLayerPort` (DIP) y los tools MCP son
+controladores delgados.
+
 ```
 sap-b1-servicelayer-mcp/
-├── package.json    # Definición del paquete npm (bin: server.js)
-├── server.js       # Servidor MCP completo
+├── package.json                  # Definición del paquete npm (bin: server.js)
+├── server.js                     # Composition root: cablea dependencias y arranca stdio
+├── src/
+│   ├── config/
+│   │   └── config.js             # Configuración desde env, validada e inmutable
+│   ├── domain/
+│   │   ├── errors.js             # Excepciones tipadas (Configuration/InvalidArgument/ServiceLayer)
+│   │   └── oData.js              # Helpers puros: query string, filtros, clamp de $top
+│   ├── application/
+│   │   ├── ports.js              # Puerto ServiceLayerPort (contrato, DIP)
+│   │   ├── helpers.js            # ensureOk / ensureSuccess / unwrapValue
+│   │   └── services/
+│   │       ├── queryService.js   # Consulta GET genérica a entidades OData
+│   │       ├── catalogService.js # Socios de negocio y artículos (compone QueryService)
+│   │       ├── salesService.js   # Pedidos de venta y stock
+│   │       ├── sessionService.js # Estado y cierre de sesión
+│   │       └── writeService.js   # create / update / delete
+│   └── infrastructure/
+│       ├── http/
+│       │   ├── httpClient.js     # Cliente HTTP mínimo (http/https)
+│       │   ├── cookies.js        # Manipulación pura de cookies de sesión
+│       │   └── serviceLayerClient.js # Adaptador del puerto: login, 401, logout
+│       └── mcp/
+│           ├── result.js         # ok / err / serialize / handle (controladores delgados)
+│           └── tools.js          # Registro de tools MCP
+├── test/                         # node:test (sin dependencias externas)
+│   ├── config.test.js
+│   ├── oData.test.js
+│   ├── cookies.test.js
+│   └── client.test.js
 ├── .gitignore
 └── README.md
+```
+
+## Desarrollo
+
+```bash
+npm install     # dependencias
+npm test        # tests (node:test)
+npm start       # arranque local (requiere variables de entorno)
 ```
 
 ## Verificación manual (JSON-RPC por stdio)
