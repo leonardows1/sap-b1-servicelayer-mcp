@@ -144,7 +144,7 @@ function err(e) {
   return { content: [{ type: "text", text: JSON.stringify({ error: e.message }) }], isError: true };
 }
 
-const server = new McpServer("sap-b1-servicelayer", { version: "1.0.0" });
+const server = new McpServer({ name: "sap-b1-servicelayer", version: "1.0.1" });
 
 server.tool(
   "sap_query",
