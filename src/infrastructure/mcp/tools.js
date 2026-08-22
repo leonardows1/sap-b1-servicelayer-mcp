@@ -2,23 +2,35 @@ import { z } from "zod";
 import { handle, serialize } from "./result.js";
 
 /**
+ * @typedef {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} McpServer
+ * @typedef {import("../../application/services/queryService.js").QueryService} QueryService
+ * @typedef {import("../../application/services/catalogService.js").CatalogService} CatalogService
+ * @typedef {import("../../application/services/salesService.js").SalesService} SalesService
+ * @typedef {import("../../application/services/sessionService.js").SessionService} SessionService
+ * @typedef {import("../../application/services/writeService.js").WriteService} WriteService
+ * @typedef {import("../../application/services/metadataService.js").MetadataService} MetadataService
+ * @typedef {import("../../application/services/sqlService.js").SqlService} SqlService
+ */
+
+/**
  * Registro de tools MCP (controladores delgados).
  * Cada tool valida argumentos con zod, delega en un caso de uso y serializa.
  *
- * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server
+ * @param {McpServer} server
  * @param {object} deps
- * @param {ReturnType<import("../../application/services/queryService.js")["createQueryService"]>} deps.queryService
- * @param {ReturnType<import("../../application/services/catalogService.js")["createCatalogService"]>} deps.catalogService
- * @param {ReturnType<import("../../application/services/salesService.js")["createSalesService"]>} deps.salesService
- * @param {ReturnType<import("../../application/services/sessionService.js")["createSessionService"]>} deps.sessionService
- * @param {ReturnType<import("../../application/services/writeService.js")["createWriteService"]>} deps.writeService
- * @param {ReturnType<import("../../application/services/metadataService.js")["createMetadataService"]>} deps.metadataService
+ * @param {QueryService} deps.queryService
+ * @param {CatalogService} deps.catalogService
+ * @param {SalesService} deps.salesService
+ * @param {SessionService} deps.sessionService
+ * @param {WriteService} deps.writeService
+ * @param {MetadataService} deps.metadataService
+ * @param {SqlService} deps.sqlService
  * @param {number} deps.maxTop límite máximo de $top (schema zod)
  * @param {boolean} deps.readonly si true, no registra tools de escritura
  */
 export function registerTools(
   server,
-  { queryService, catalogService, salesService, sessionService, writeService, metadataService, maxTop, readonly }
+  { queryService, catalogService, salesService, sessionService, writeService, metadataService, sqlService, maxTop, readonly }
 ) {
   const top = z.number().int().min(1).max(maxTop).optional();
   const topWithDefault = top.default(10);
@@ -42,7 +54,7 @@ export function registerTools(
 
   server.tool(
     "sap_get_business_partners",
-    "Lista de socios de negocio (clientes/proveedores) de SAP B1. card_type: cCustomer, cSupplier o cLid.",
+    "Lista de socios de negocio (clientes/proveedores) de SAP B1. card_type: cCustomer, cSupplier o cLid. Nota: los campos financieros varían por instancia (en v1: CurrentAccountBalance, OpenOrdersBalance, OpenDeliveryNotesBalance; 'Balance' suele no existir) — consulta sap_get_entity_schema si no conoces los campos.",
     {
       filter: z.string().optional(),
       select: z.string().optional(),
@@ -69,7 +81,7 @@ export function registerTools(
 
   server.tool(
     "sap_get_sales_orders",
-    "Pedidos de venta (Sales Orders) de SAP B1. expand sugerido: 'DocumentLines'.",
+    "Pedidos de venta (Sales Orders) de SAP B1. En ServiceLayer v1 las líneas (DocumentLines) vienen incluidas en la respuesta sin necesidad de expand; el expand 'DocumentLines' solo aplica a v2.",
     {
       filter: z.string().optional(),
       select: z.string().optional(),
@@ -83,7 +95,7 @@ export function registerTools(
 
   server.tool(
     "sap_get_stock",
-    "Stock disponible de un artículo (ItemStock) en SAP B1. warehouse opcional (ej: '01').",
+    "Stock disponible de un artículo (entity set ItemStock) en SAP B1. warehouse opcional (ej: '01'). En ServiceLayer v1 antiguos ItemStock no existe y se devuelve un error claro.",
     {
       item_code: z.string().describe("Código del artículo"),
       warehouse: z.string().optional().describe("Código de almacén"),
@@ -104,11 +116,20 @@ export function registerTools(
 
   server.tool(
     "sap_get_entity_schema",
-    "Esquema de una entidad del ServiceLayer (propiedades, tipos y claves) para guiar $select y $filter. Ejemplo: sap_get_entity_schema('Orders').",
+    "Esquema de una entidad del ServiceLayer: propiedades (con tipos y claves) y navigationProperties (válidas para $expand). Úsalo antes de armar $select/$filter/$expand. Ejemplo: sap_get_entity_schema('Orders').",
     {
       entity: z.string().describe("Entidad OData (ej: Orders, BusinessPartners, @MYPORTAL)"),
     },
     handle(async ({ entity }) => serialize(await metadataService.getEntitySchema(entity)))
+  );
+
+  server.tool(
+    "sap_sql_query",
+    "Ejecuta SQL de solo lectura (SELECT o WITH) contra el ServiceLayer (POST /sql_query). Devuelve las filas. Solo disponible si el ServiceLayer lo soporta (v2/FP modernos; en v1 antiguos responde error claro). Ejemplo: SELECT TOP 10 CardCode, CardName FROM OCRD.",
+    {
+      sql: z.string().describe("Consulta SQL de solo lectura (SELECT o WITH)"),
+    },
+    handle(async ({ sql }) => serialize(await sqlService.runSql(sql)))
   );
 
   server.tool(

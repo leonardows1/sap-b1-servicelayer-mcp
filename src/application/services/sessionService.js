@@ -1,13 +1,31 @@
 /**
  * Casos de uso: estado y cierre de la sesión contra el ServiceLayer.
  *
+ * @typedef {object} SessionStatus
+ * @property {boolean} connected
+ * @property {string} [detail]
+ * @property {number} [http]
+ * @property {number|null} [session_age_sec]
+ *
+ * @typedef {object} LogoutResult
+ * @property {boolean} logged_out
+ * @property {string} [detail]
+ * @property {number} [http]
+ *
+ * @typedef {object} SessionService
+ * @property {() => Promise<SessionStatus>} status
+ * @property {() => Promise<LogoutResult>} logout
+ */
+
+/**
  * @param {import("../ports.js").ServiceLayerPort} client
+ * @returns {SessionService}
  */
 export function createSessionService(client) {
   return {
     /**
      * Estado de la sesión activa. Consulta `GET /` como latido de verificación.
-     * @returns {Promise<{connected: boolean, detail?: string, http?: number, session_age_sec?: number}>}
+     * @returns {Promise<SessionStatus>}
      */
     async status() {
       if (!client.hasSession()) {
@@ -23,7 +41,7 @@ export function createSessionService(client) {
 
     /**
      * Cierre explícito de la sesión.
-     * @returns {Promise<{logged_out: boolean, detail?: string, http?: number}>}
+     * @returns {Promise<LogoutResult>}
      */
     async logout() {
       const status = await client.logout();

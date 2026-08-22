@@ -2,16 +2,23 @@ import http from "node:http";
 import https from "node:https";
 
 /**
- * Cliente HTTP mínimo (http/https) para el ServiceLayer.
+ * Función de request HTTP hacia el ServiceLayer.
  * Independiente de la sesión: las cookies viajan por parámetro `cookie`.
+ *
+ * @typedef {(method: string, path: string, body?: object|null, cookie?: string|null) => Promise<import("../../application/ports.js").HttpResponse>} HttpRequestFn
+ */
+
+/**
+ * Cliente HTTP mínimo (http/https) para el ServiceLayer.
  *
  * @param {object} options
  * @param {string} options.baseUrl base del ServiceLayer (ej: https://host:50000/b1s/v1)
  * @param {boolean} options.verifyTls false para certificados autofirmados
  * @param {number} [options.timeoutMs] timeout por request (default 30s)
- * @returns {(method: string, path: string, body?: object|null, cookie?: string|null) => Promise<{status: number, body: object|null, text: string, setCookies: string[]}>}
+ * @returns {HttpRequestFn}
  */
 export function createHttpClient({ baseUrl, verifyTls, timeoutMs = 30000 }) {
+  /** @type {import("node:https").Agent} */
   const agent = new https.Agent({
     keepAlive: true,
     maxSockets: 1,
@@ -46,6 +53,7 @@ export function createHttpClient({ baseUrl, verifyTls, timeoutMs = 30000 }) {
           let raw = "";
           res.on("data", (chunk) => (raw += chunk));
           res.on("end", () => {
+            /** @type {object|null} */
             let parsed = null;
             try {
               parsed = raw ? JSON.parse(raw) : null;
@@ -53,7 +61,7 @@ export function createHttpClient({ baseUrl, verifyTls, timeoutMs = 30000 }) {
               parsed = null;
             }
             resolve({
-              status: res.statusCode,
+              status: res.statusCode ?? 0,
               body: parsed,
               text: raw,
               setCookies: res.headers["set-cookie"] || [],

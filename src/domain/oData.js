@@ -11,7 +11,7 @@
  * @returns {number|null}
  */
 export function clampTop(top, maxTop) {
-  const n = parseInt(top, 10);
+  const n = parseInt(String(top), 10);
   if (Number.isNaN(n)) return null;
   return Math.min(Math.max(n, 1), maxTop);
 }
@@ -84,7 +84,7 @@ export function buildQueryString({ select, filter, top, skip, orderby, expand, m
   const topValue = clampTop(top, maxTop);
   if (topValue != null) params.$top = String(topValue);
 
-  if (skip != null) params.$skip = String(parseInt(skip, 10));
+  if (skip != null) params.$skip = String(parseInt(String(skip), 10));
   if (orderby) params.$orderby = orderby;
   if (expand) params.$expand = expand;
 

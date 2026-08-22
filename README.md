@@ -21,12 +21,13 @@ Servidor MCP (Model Context Protocol) para conectar asistentes de IA (opencode, 
 |---|---|
 | `sap_query` | GET genérico a cualquier entidad OData con `select`, `filter`, `top` (≤200), `skip`, `orderby`, `expand` |
 | `sap_list_entities` | Lista todas las entidades OData expuestas por el ServiceLayer (desde `$metadata`, cacheado); incluye tablas de usuario (`@`) y UDOs. `filter` opcional para acotar |
-| `sap_get_entity_schema` | Esquema de una entidad (propiedades, tipos y claves) para guiar `$select`/`$filter` |
+| `sap_get_entity_schema` | Esquema de una entidad: propiedades (tipos/claves) **y navigationProperties** (válidas para `$expand`); resuelve entity sets que comparten EntityType |
 | `sap_list_actions` | Lista los métodos de servicio (function imports, ej: `CompanyService_GetCompanyInfo`) con sus parámetros |
+| `sap_sql_query` | SQL de solo lectura (`SELECT`/`WITH`; INSERT/UPDATE/DELETE/DDL rechazados) vía `POST /sql_query` — solo en ServiceLayer v2/FP recientes; en v1 antiguos responde error claro |
 | `sap_get_business_partners` | Socios de negocio (clientes/proveedores), filtro por `card_type` |
 | `sap_get_items` | Artículos del catálogo |
-| `sap_get_sales_orders` | Pedidos de venta (con `expand` de líneas) |
-| `sap_get_stock` | Stock de un artículo por `ItemCode` (+ `WarehouseCode` opcional) |
+| `sap_get_sales_orders` | Pedidos de venta; en v1 las líneas (`DocumentLines`) vienen incluidas sin expand (expand es solo v2) |
+| `sap_get_stock` | Stock de un artículo por `ItemCode` (+ `WarehouseCode` opcional); error claro si `ItemStock` no existe en el ServiceLayer (v1 antiguos) |
 | `sap_session_status` | Estado de la sesión activa |
 | `sap_logout` | Cierre explícito de la sesión |
 
@@ -122,7 +123,8 @@ sap-b1-servicelayer-mcp/
 │   │       ├── salesService.js   # Pedidos de venta y stock
 │   │       ├── sessionService.js # Estado y cierre de sesión
 │   │       ├── writeService.js   # create / update / delete
-│   │       └── metadataService.js # Descubrimiento: $metadata cacheado, entidades, esquemas y actions
+│   │       ├── metadataService.js # Descubrimiento: $metadata cacheado, entidades, esquemas y actions
+│   │       └── sqlService.js     # SQL de solo lectura (SELECT/WITH) vía POST /sql_query
 │   └── infrastructure/
 │       ├── http/
 │       │   ├── httpClient.js     # Cliente HTTP mínimo (http/https)
@@ -137,20 +139,65 @@ sap-b1-servicelayer-mcp/
 │   ├── edmx.test.js              # parseo EDMX v3/v4 (entity sets, esquemas, function imports)
 │   ├── cookies.test.js
 │   ├── client.test.js
+│   ├── fakePort.js               # fake tipado del puerto ServiceLayerPort (compartido)
 │   ├── services.test.js          # casos de uso con cliente fake (anti-inyección)
 │   ├── metadataService.test.js   # descubrimiento y acciones con fake
+│   ├── sqlService.test.js        # SQL solo-lectura (rechazos, Service Not Found)
 │   └── tools.test.js             # integración MCP in-memory (registro y llamadas)
 ├── .gitignore
 └── README.md
 ```
+
+## Adaptación al esquema real (verificado contra ServiceLayer 10.0 v1)
+
+El servidor se adapta dinámicamente al `$metadata` de cada instancia, sin
+nada hardcodeado. Hechos verificados en una instancia real (v1, OData v3):
+
+- **Entity sets comparten EntityType**: `Orders`/`Invoices`/`DeliveryNotes` → `SAPB1.Document`.
+  `sap_get_entity_schema` resuelve el tipo real automáticamente.
+- **Líneas de documento**: en v1 son *complex collections* (`DocumentLines`,
+  `DocumentInstallments`) que vienen **inline** en la respuesta; `$expand`
+  solo aplica a navigationProperties (el esquema las lista, ej:
+  `BusinessPartner`, `Currency`).
+- **Campos financieros**: en v1 `BusinessPartners` no tiene `Balance`;
+  usa `CurrentAccountBalance`, `OpenOrdersBalance`, `OpenDeliveryNotesBalance`.
+  Las facturas no tienen `BalanceDue`: el saldo abierto es `DocTotal − PaidToDate`.
+- **Sin `ItemStock` ni `/sql_query`** en v1 antiguos: `sap_get_stock` avisa con
+  entidades de stock reales descubiertas; `sap_sql_query` devuelve error claro.
+- **Function imports v3** con `IsBindable="true"` se listan como `bound`
+  (no invocables standalone) para no contaminar `sap_list_actions`.
+
+### Receta: reporte de antigüedad de saldos (30/60/90)
+
+Sin SQL, solo con `sap_query` (funciona en cualquier v1/v2):
+
+1. Facturas abiertas (paginar con `skip` en lotes ≤200 si hay muchas):
+   ```
+   sap_query('Invoices',
+     filter='PaidToDate lt DocTotal',
+     select='CardCode,CardName,DocNum,DocDate,DocDueDate,DocTotal,PaidToDate,DocumentStatus,ControlAccount')
+   ```
+2. Por cada factura: `saldo = DocTotal − PaidToDate`; `días = hoy − DocDueDate`.
+3. Agrupar por rangos **0-30 / 31-60 / 61-90 / 90+** y por cliente (o por
+   `ControlAccount` para la vista por cuenta contable).
+4. Totales por cliente/cuenta: `sap_get_business_partners` con
+   `CurrentAccountBalance` (saldo actual) y `CreditLimit`.
+
+Con `sap_sql_query` (v2) el mismo reporte es una sola query sobre
+`OINV`/`OINV3`/`OFRJ`/`OCRD`.
 
 ## Desarrollo
 
 ```bash
 npm install     # dependencias
 npm test        # tests (node:test)
+npm run typecheck  # verificación de tipos estricta (tsc --noEmit sobre JSDoc)
 npm start       # arranque local (requiere variables de entorno)
 ```
+
+Todo el código JS está verificado con TypeScript estricto vía JSDoc
+(`checkJs` + `strict` + `noUncheckedIndexedAccess`): `tsconfig.json` sin
+build step, el servidor se ejecuta directo con `node`.
 
 ## Verificación manual (JSON-RPC por stdio)
 

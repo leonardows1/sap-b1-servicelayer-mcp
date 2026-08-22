@@ -6,7 +6,15 @@ import { ensureSuccess } from "../helpers.js";
  * Casos de uso: escrituras en el ServiceLayer (POST/PATCH/DELETE).
  * Solo se registran en el servidor MCP cuando la configuración lo permite.
  *
+ * @typedef {object} WriteService
+ * @property {(entity: string, payload: object) => Promise<object|null>} create
+ * @property {(entity: string, id: string, payload: object) => Promise<object|null>} update
+ * @property {(entity: string, id: string) => Promise<{deleted: boolean}>} remove
+ */
+
+/**
  * @param {import("../ports.js").ServiceLayerPort} client
+ * @returns {WriteService}
  */
 export function createWriteService(client) {
   /**
@@ -43,6 +51,7 @@ export function createWriteService(client) {
     /**
      * @param {string} entity
      * @param {object} payload
+     * @returns {Promise<object|null>}
      */
     create: (entity, payload) => {
       if (!isValidEntityName(entity)) {
@@ -55,6 +64,7 @@ export function createWriteService(client) {
      * @param {string} entity
      * @param {string} id clave del registro (ej: CardCode)
      * @param {object} payload
+     * @returns {Promise<object|null>}
      */
     update: (entity, id, payload) => send("PATCH", resourcePath(entity, id), payload),
 

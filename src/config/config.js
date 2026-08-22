@@ -22,6 +22,13 @@ export function loadConfig(env = process.env) {
     throw new ConfigurationError("SAP_B1_SERVER_URL no configurado");
   }
 
+  /**
+   * Valida que una variable requerida esté presente.
+   *
+   * @param {string} name
+   * @param {string} label
+   * @returns {string}
+   */
   const requireValue = (name, label) => {
     const value = (env[name] || "").trim();
     if (!value) {
@@ -45,6 +52,10 @@ export function loadConfig(env = process.env) {
 /**
  * Booleano de env: solo la cadena "false" (case-insensitive) es falsa;
  * cualquier otro valor no vacío es true. Ausente → default.
+ *
+ * @param {string|undefined} value
+ * @param {boolean} defaultValue
+ * @returns {boolean}
  */
 function parseBoolean(value, defaultValue) {
   if (value === undefined || value === "") return defaultValue;
@@ -53,8 +64,12 @@ function parseBoolean(value, defaultValue) {
 
 /**
  * Entero positivo de env con fallback. Evita NaN en la configuración.
+ *
+ * @param {string|undefined} value
+ * @param {number} defaultValue
+ * @returns {number}
  */
 function parseIntSafe(value, defaultValue) {
-  const n = parseInt(value, 10);
+  const n = parseInt(value ?? "", 10);
   return Number.isFinite(n) && n > 0 ? n : defaultValue;
 }

@@ -3,8 +3,13 @@
  */
 
 /**
+ * @typedef {import("@modelcontextprotocol/sdk/types.js").CallToolResult} CallToolResult
+ */
+
+/**
  * Resultado de éxito con texto plano.
  * @param {string} text
+ * @returns {CallToolResult}
  */
 export function ok(text) {
   return { content: [{ type: "text", text }] };
@@ -13,10 +18,11 @@ export function ok(text) {
 /**
  * Resultado de error: JSON con el mensaje + isError.
  * @param {unknown} e
+ * @returns {CallToolResult}
  */
 export function err(e) {
   return {
-    content: [{ type: "text", text: JSON.stringify({ error: e.message }) }],
+    content: [{ type: "text", text: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }) }],
     isError: true,
   };
 }
@@ -36,7 +42,7 @@ export function serialize(data) {
  *
  * @template T
  * @param {(args: T) => Promise<string>} fn caso de uso que devuelve texto
- * @returns {(args: T) => Promise<object>} handler MCP
+ * @returns {(args: T) => Promise<CallToolResult>} handler MCP
  */
 export function handle(fn) {
   return async (args) => {

@@ -1,6 +1,12 @@
 import { findCookie, mergeCookies } from "./cookies.js";
 
 /**
+ * @typedef {import("../../application/ports.js").ServiceLayerPort} ServiceLayerPort
+ * @typedef {import("../../application/ports.js").HttpResponse} HttpResponse
+ * @typedef {import("./httpClient.js").HttpRequestFn} HttpRequestFn
+ */
+
+/**
  * Adaptador del puerto ServiceLayerPort (ver src/application/ports.js).
  *
  * Responsabilidades:
@@ -8,13 +14,31 @@ import { findCookie, mergeCookies } from "./cookies.js";
  * - Login implícito ante `POST /Login` y re-login automático ante 401.
  * - Logout garantizado con limpieza del estado.
  *
- * @param {ReturnType<import("./httpClient.js")["createHttpClient"]>} httpClient
- * @param {object} credentials
- * @param {string} credentials.database CompanyDB
- * @param {string} credentials.username
- * @param {string} credentials.password
+ * @implements {ServiceLayerPort}
  */
 export class ServiceLayerClient {
+  /** @type {HttpRequestFn} */
+  _http;
+  /** @type {string} */
+  _database;
+  /** @type {string} */
+  _username;
+  /** @type {string} */
+  _password;
+  /** @type {string|null} */
+  _cookieHeader;
+  /** @type {string|null} */
+  _b1session;
+  /** @type {number|null} */
+  _sessionStartedAt;
+
+  /**
+   * @param {HttpRequestFn} httpClient
+   * @param {object} credentials
+   * @param {string} credentials.database CompanyDB
+   * @param {string} credentials.username
+   * @param {string} credentials.password
+   */
   constructor(httpClient, { database, username, password }) {
     this._http = httpClient;
     this._database = database;
@@ -41,6 +65,11 @@ export class ServiceLayerClient {
   /**
    * HTTP crudo hacia el ServiceLayer. Absorbe las cookies Set-Cookie de la
    * respuesta y actualiza el estado de sesión si llega una B1SESSION nueva.
+   *
+   * @param {string} method
+   * @param {string} path
+   * @param {object|null} [body]
+   * @returns {Promise<HttpResponse>}
    */
   async request(method, path, body = null) {
     const res = await this._http(method, path, body, this._cookieHeader);
@@ -70,6 +99,11 @@ export class ServiceLayerClient {
 
   /**
    * request con reintento automático ante 401 (sesión expirada).
+   *
+   * @param {string} method
+   * @param {string} path
+   * @param {object|null} [body]
+   * @returns {Promise<HttpResponse>}
    */
   async authorizedRequest(method, path, body = null) {
     let res = await this.request(method, path, body);

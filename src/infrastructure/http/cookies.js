@@ -10,7 +10,7 @@
  * @returns {{name: string, value: string}|null}
  */
 export function parseSetCookie(headerValue) {
-  const first = headerValue.split(";")[0].trim();
+  const first = (headerValue.split(";")[0] ?? "").trim();
   const eq = first.indexOf("=");
   if (eq <= 0) return null;
   return { name: first.slice(0, eq), value: first.slice(eq + 1) };

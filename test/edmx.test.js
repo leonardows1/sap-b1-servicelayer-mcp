@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   parseEntitySets,
   extractEntitySchema,
+  resolveEntitySchema,
   parseFunctionImports,
 } from "../src/domain/edmx.js";
 
@@ -79,6 +80,7 @@ test("parseEntitySets: v4 con namespaces distintos", () => {
 
 test("extractEntitySchema: propiedades, claves y OpenType", () => {
   const schema = extractEntitySchema(EDMX_V3, "BusinessPartners");
+  assert.ok(schema);
   assert.equal(schema.name, "BusinessPartners");
   assert.equal(schema.openType, true);
   assert.deepEqual(schema.properties, [
@@ -90,9 +92,90 @@ test("extractEntitySchema: propiedades, claves y OpenType", () => {
 
 test("extractEntitySchema: tablas de usuario y no encontrada", () => {
   const schema = extractEntitySchema(EDMX_V3, "@MYPORTAL");
+  assert.ok(schema);
   assert.equal(schema.openType, false);
-  assert.equal(schema.properties[0].key, true);
+  assert.equal(schema.properties[0]?.key, true);
   assert.equal(extractEntitySchema(EDMX_V3, "NoExiste"), null);
+});
+
+test("resolveEntitySchema: resuelve entity sets que comparten EntityType", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityType Name="Document" OpenType="true">
+        <Key><PropertyRef Name="DocEntry"/></Key>
+        <Property Name="DocEntry" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="CardCode" Type="Edm.String"/>
+      </EntityType>
+      <EntityContainer Name="SAPB1">
+        <EntitySet Name="Orders" EntityType="SAPB1.Document"/>
+        <EntitySet Name="Invoices" EntityType="SAPB1.Document"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>`;
+  const schema = resolveEntitySchema(xml, "Orders");
+  assert.ok(schema);
+  assert.equal(schema.name, "Document");
+  assert.deepEqual(schema.properties.map((p) => p.name), ["DocEntry", "CardCode"]);
+  assert.equal(resolveEntitySchema(xml, "NoExiste"), null);
+});
+
+test("extractEntitySchema: parsea navigationProperties vía Association", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityType Name="Document" OpenType="true">
+        <Key><PropertyRef Name="DocEntry"/></Key>
+        <Property Name="DocEntry" Type="Edm.Int32" Nullable="false"/>
+        <NavigationProperty FromRole="Documents" Name="BusinessPartner" Relationship="SAPB1.FK_Documents_BusinessPartners" ToRole="BusinessPartners"/>
+        <NavigationProperty FromRole="Documents" Name="Currency" Relationship="SAPB1.FK_Documents_Currencies" ToRole="Currencies"/>
+        <NavigationProperty FromRole="X" Name="SinRelacion" ToRole="Y"/>
+      </EntityType>
+      <Association Name="FK_Documents_BusinessPartners">
+        <End Role="Documents" Type="SAPB1.Document" Multiplicity="*"/>
+        <End Role="BusinessPartners" Type="SAPB1.BusinessPartner" Multiplicity="0..1"/>
+      </Association>
+      <Association Name="FK_Documents_Currencies">
+        <End Role="Documents" Type="SAPB1.Document" Multiplicity="*"/>
+        <End Role="Currencies" Type="SAPB1.Currency" Multiplicity="0..1"/>
+      </Association>
+      <EntityContainer Name="SAPB1">
+        <EntitySet Name="Orders" EntityType="SAPB1.Document"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>`;
+  const schema = extractEntitySchema(xml, "Document");
+  assert.ok(schema);
+  assert.deepEqual(schema.navigationProperties, [
+    { name: "BusinessPartner", targetType: "BusinessPartner" },
+    { name: "Currency", targetType: "Currency" },
+    { name: "SinRelacion", targetType: null },
+  ]);
+});
+
+test("parseFunctionImports: v3 IsBindable se marca bound (no invocable)", () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="SAPB1" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">
+      <EntityContainer Name="SAPB1">
+        <FunctionImport IsBindable="true" Name="List" ReturnType="SAPB1.SQLQueryResult"/>
+        <FunctionImport Name="CompanyService_GetCompanyInfo" ReturnType="SAPB1.CompanyInfo">
+          <Parameter Name="CompanyInfo" Mode="In" Type="SAPB1.CompanyInfo"/>
+        </FunctionImport>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>`;
+  const imports = parseFunctionImports(xml);
+  assert.equal(imports[0]?.name, "List");
+  assert.equal(imports[0]?.kind, "bound");
+  assert.equal(imports[1]?.kind, "function");
+  assert.equal(imports[1]?.parameters.length, 1);
 });
 
 test("parseFunctionImports: v3 con parámetros inline", () => {

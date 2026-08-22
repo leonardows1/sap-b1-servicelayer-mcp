@@ -7,6 +7,7 @@
  */
 
 export class ConfigurationError extends Error {
+  /** @param {string} message */
   constructor(message) {
     super(message);
     this.name = "ConfigurationError";
@@ -14,6 +15,7 @@ export class ConfigurationError extends Error {
 }
 
 export class InvalidArgumentError extends Error {
+  /** @param {string} message */
   constructor(message) {
     super(message);
     this.name = "InvalidArgumentError";
@@ -21,6 +23,13 @@ export class InvalidArgumentError extends Error {
 }
 
 export class ServiceLayerError extends Error {
+  /** @type {number} */
+  status;
+
+  /**
+   * @param {number} status
+   * @param {string} message
+   */
   constructor(status, message) {
     super(message);
     this.name = "ServiceLayerError";
@@ -31,7 +40,7 @@ export class ServiceLayerError extends Error {
    * Construye un ServiceLayerError a partir de una respuesta HTTP.
    * El mensaje del ServiceLayer (OData) tiene prioridad sobre el código HTTP.
    *
-   * @param {{ status: number, body: object|null }} res
+   * @param {{ status: number, body: any }} res
    * @returns {ServiceLayerError}
    */
   static from(res) {

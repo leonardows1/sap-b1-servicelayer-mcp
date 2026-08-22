@@ -18,6 +18,7 @@ import { createSalesService } from "./src/application/services/salesService.js";
 import { createSessionService } from "./src/application/services/sessionService.js";
 import { createWriteService } from "./src/application/services/writeService.js";
 import { createMetadataService } from "./src/application/services/metadataService.js";
+import { createSqlService } from "./src/application/services/sqlService.js";
 import { registerTools } from "./src/infrastructure/mcp/tools.js";
 
 const SERVER_NAME = "sap-b1-servicelayer";
@@ -29,10 +30,11 @@ function buildServer() {
 
   const queryService = createQueryService(client, config.maxTop);
   const catalogService = createCatalogService(queryService);
-  const salesService = createSalesService(queryService);
+  const metadataService = createMetadataService(client);
+  const salesService = createSalesService(queryService, metadataService);
   const sessionService = createSessionService(client);
   const writeService = createWriteService(client);
-  const metadataService = createMetadataService(client);
+  const sqlService = createSqlService(client);
 
   const { version } = createRequire(import.meta.url)("./package.json");
   const server = new McpServer({ name: SERVER_NAME, version });
@@ -44,6 +46,7 @@ function buildServer() {
     sessionService,
     writeService,
     metadataService,
+    sqlService,
     maxTop: config.maxTop,
     readonly: config.readonly,
   });

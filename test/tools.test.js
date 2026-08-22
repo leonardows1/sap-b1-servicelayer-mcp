@@ -10,6 +10,8 @@ import { createSalesService } from "../src/application/services/salesService.js"
 import { createSessionService } from "../src/application/services/sessionService.js";
 import { createWriteService } from "../src/application/services/writeService.js";
 import { createMetadataService } from "../src/application/services/metadataService.js";
+import { createSqlService } from "../src/application/services/sqlService.js";
+import { createFakePort } from "./fakePort.js";
 
 const READ_TOOLS = [
   "sap_query",
@@ -20,6 +22,7 @@ const READ_TOOLS = [
   "sap_list_entities",
   "sap_get_entity_schema",
   "sap_list_actions",
+  "sap_sql_query",
   "sap_session_status",
   "sap_logout",
 ];
@@ -44,47 +47,72 @@ const METADATA_XML = `<?xml version="1.0" encoding="utf-8"?>
   </edmx:DataServices>
 </edmx:Edmx>`;
 
-/** Cliente fake del puerto: responde según la ruta. */
 function makeFakeClient() {
-  return {
-    hasSession: () => true,
-    sessionAgeSeconds: () => 42,
-    request: async () => ({ status: 200, body: null }),
-    authorizedRequest: async (method, path) => {
-      if (path === "/BusinessPartners?%24select=CardCode") {
-        return { status: 200, body: { value: [{ CardCode: "C1", CardName: "Cliente 1" }] } };
-      }
-      if (path === "/$metadata") {
-        return { status: 200, body: null, text: METADATA_XML };
-      }
-      if (path === "/CompanyService_GetCompanyInfo") {
-        return { status: 200, body: { CompanyInfo: { Name: "ACME" } } };
-      }
-      if (path === "/Login") return { status: 200, body: {} };
-      if (path === "/Logout") return { status: 200, body: {} };
-      return { status: 200, body: {} };
+  return createFakePort({
+    responses: {
+      "GET /BusinessPartners?%24select=CardCode": {
+        status: 200,
+        body: { value: [{ CardCode: "C1", CardName: "Cliente 1" }] },
+        text: "",
+        setCookies: [],
+      },
+      "GET /$metadata": { status: 200, body: null, text: METADATA_XML, setCookies: [] },
+      "POST /CompanyService_GetCompanyInfo": {
+        status: 200,
+        body: { CompanyInfo: { Name: "ACME" } },
+        text: "",
+        setCookies: [],
+      },
+      "POST /sql_query": {
+        status: 200,
+        body: { value: [{ CardCode: "C1" }] },
+        text: "",
+        setCookies: [],
+      },
     },
-    logout: async () => 200,
-  };
+  });
 }
 
+/**
+ * @param {boolean} readonly
+ * @returns {{server: import("@modelcontextprotocol/sdk/server/mcp.js").McpServer, client: ReturnType<typeof makeFakeClient>}}
+ */
 function buildServer(readonly) {
   const client = makeFakeClient();
   const queryService = createQueryService(client, 200);
+  const metadataService = createMetadataService(client);
   const server = new McpServer({ name: "test", version: "0.0.0" });
   registerTools(server, {
     queryService,
     catalogService: createCatalogService(queryService),
-    salesService: createSalesService(queryService),
+    salesService: createSalesService(queryService, metadataService),
     sessionService: createSessionService(client),
     writeService: createWriteService(client),
-    metadataService: createMetadataService(client),
+    metadataService,
+    sqlService: createSqlService(client),
     maxTop: 200,
     readonly,
   });
   return { server, client };
 }
 
+/**
+ * Extrae el texto del primer content "text" de una respuesta de callTool.
+ * @param {Awaited<ReturnType<Client["callTool"]>>} res
+ * @returns {string}
+ */
+function toolText(res) {
+  const content = /** @type {Array<{type: string, text: string}>|undefined} */ (res.content);
+  const t = content?.find((c) => c.type === "text");
+  assert.ok(t, "respuesta sin content de texto");
+  return t.text;
+}
+
+/**
+ * Conecta el servidor a un cliente MCP in-memory y ejecuta fn.
+ * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server
+ * @param {(client: Client) => Promise<void>} fn
+ */
 async function withClient(server, fn) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
@@ -123,7 +151,7 @@ test("sap_query: responde ok con datos serializados", async () => {
       arguments: { entity: "BusinessPartners", select: "CardCode" },
     });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.deepEqual(JSON.parse(text), [{ CardCode: "C1", CardName: "Cliente 1" }]);
   });
 });
@@ -136,10 +164,10 @@ test("sap_query: entidad maliciosa responde isError sin llamar al cliente", asyn
       arguments: { entity: "BusinessPartners/delete" },
     });
     assert.equal(res.isError, true);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.match(JSON.parse(text).error, /entity inválida/);
   });
-  assert.equal(fake.calls?.length ?? 0, 0);
+  assert.equal(fake.calls.length, 0);
 });
 
 test("sap_logout: tool de sesión funciona en modo readonly", async () => {
@@ -147,7 +175,7 @@ test("sap_logout: tool de sesión funciona en modo readonly", async () => {
   await withClient(server, async (client) => {
     const res = await client.callTool({ name: "sap_logout", arguments: {} });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.deepEqual(JSON.parse(text), { logged_out: true, http: 200 });
   });
 });
@@ -157,7 +185,7 @@ test("sap_list_entities: devuelve entidades desde $metadata", async () => {
   await withClient(server, async (client) => {
     const res = await client.callTool({ name: "sap_list_entities", arguments: {} });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.deepEqual(JSON.parse(text), {
       total: 1,
       entities: [{ name: "BusinessPartners", userTable: false }],
@@ -173,7 +201,8 @@ test("sap_get_entity_schema: devuelve propiedades de la entidad", async () => {
       arguments: { entity: "BusinessPartners" },
     });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
+    /** @type {{openType: boolean, properties: Array<{name: string}>}} */
     const schema = JSON.parse(text);
     assert.equal(schema.openType, true);
     assert.deepEqual(schema.properties.map((p) => p.name), ["CardCode", "CardName"]);
@@ -185,7 +214,7 @@ test("sap_list_actions: lista function imports en ambos modos", async () => {
   await withClient(server, async (client) => {
     const res = await client.callTool({ name: "sap_list_actions", arguments: {} });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.deepEqual(JSON.parse(text), {
       total: 1,
       actions: [
@@ -208,7 +237,7 @@ test("sap_call_action: disponible en modo escritura e invoca POST", async () => 
       arguments: { action: "CompanyService_GetCompanyInfo", params: {} },
     });
     assert.equal(res.isError, undefined);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.deepEqual(JSON.parse(text), { CompanyInfo: { Name: "ACME" } });
   });
 });
@@ -221,8 +250,47 @@ test("sap_call_action: rechaza nombre inválido sin llamar al cliente", async ()
       arguments: { action: "Orders(1)/Cancel" },
     });
     assert.equal(res.isError, true);
-    const text = res.content.find((c) => c.type === "text").text;
+    const text = toolText(res);
     assert.match(JSON.parse(text).error, /action inválida/);
   });
-  assert.equal(fake.calls?.length ?? 0, 0);
+  assert.equal(fake.calls.length, 0);
+});
+
+test("sap_get_stock: responde error claro si ItemStock no existe", async () => {
+  const { server } = buildServer(true);
+  await withClient(server, async (client) => {
+    const res = await client.callTool({
+      name: "sap_get_stock",
+      arguments: { item_code: "X" },
+    });
+    assert.equal(res.isError, true);
+    const text = toolText(res);
+    assert.match(JSON.parse(text).error, /ItemStock no existe/);
+  });
+});
+test("sap_sql_query: SELECT válido devuelve filas en ambos modos", async () => {
+  const { server } = buildServer(true);
+  await withClient(server, async (client) => {
+    const res = await client.callTool({
+      name: "sap_sql_query",
+      arguments: { sql: "SELECT TOP 1 CardCode FROM OCRD" },
+    });
+    assert.equal(res.isError, undefined);
+    const text = toolText(res);
+    assert.deepEqual(JSON.parse(text), [{ CardCode: "C1" }]);
+  });
+});
+
+test("sap_sql_query: sentencia no-SELECT responde isError sin llamar al cliente", async () => {
+  const { server, client: fake } = buildServer(true);
+  await withClient(server, async (client) => {
+    const res = await client.callTool({
+      name: "sap_sql_query",
+      arguments: { sql: "DELETE FROM OCRD" },
+    });
+    assert.equal(res.isError, true);
+    const text = toolText(res);
+    assert.match(JSON.parse(text).error, /solo lectura/);
+  });
+  assert.equal(fake.calls.length, 0);
 });

@@ -6,11 +6,13 @@ import { ServiceLayerClient } from "../src/infrastructure/http/serviceLayerClien
 
 const SESSION_COOKIE = "B1SESSION=test-session; Path=/";
 
-let server;
-let baseUrl;
+/** @type {import("node:http").Server|null} */
+let server = null;
+/** @type {string} */
+let baseUrl = "";
 
 before(async () => {
-  server = http.createServer((req, res) => {
+  const srv = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/b1s/v1/Login") {
       res.setHeader("Set-Cookie", [SESSION_COOKIE]);
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -35,12 +37,15 @@ before(async () => {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end("{}");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}/b1s/v1`;
+  server = srv;
+  await new Promise((/** @type {(value?: unknown) => void} */ resolve) => srv.listen(0, "127.0.0.1", () => resolve()));
+  const addr = srv.address();
+  assert.ok(addr && typeof addr !== "string");
+  baseUrl = `http://127.0.0.1:${addr.port}/b1s/v1`;
 });
 
 after(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise((/** @type {(value?: unknown) => void} */ resolve) => server?.close(() => resolve()));
 });
 
 function makeClient() {
