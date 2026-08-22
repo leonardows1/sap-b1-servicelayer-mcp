@@ -22,11 +22,19 @@ export function loadConfig(env = process.env) {
     throw new ConfigurationError("SAP_B1_SERVER_URL no configurado");
   }
 
+  const requireValue = (name, label) => {
+    const value = (env[name] || "").trim();
+    if (!value) {
+      throw new ConfigurationError(`${label} no configurado`);
+    }
+    return value;
+  };
+
   return Object.freeze({
     baseUrl,
-    database: env.SAP_B1_DATABASE || "",
-    username: env.SAP_B1_USERNAME || "",
-    password: env.SAP_B1_PASSWORD || "",
+    database: requireValue("SAP_B1_DATABASE", "SAP_B1_DATABASE"),
+    username: requireValue("SAP_B1_USERNAME", "SAP_B1_USERNAME"),
+    password: requireValue("SAP_B1_PASSWORD", "SAP_B1_PASSWORD"),
     verifyTls: parseBoolean(env.SAP_B1_VERIFY_TLS, true),
     readonly: parseBoolean(env.SAP_B1_READONLY, true),
     maxTop: parseIntSafe(env.SAP_B1_MAX_TOP, 200),

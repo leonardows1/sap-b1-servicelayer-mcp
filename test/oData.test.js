@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clampTop, composeFilter, eq, buildQueryString } from "../src/domain/oData.js";
+import {
+  clampTop,
+  composeFilter,
+  eq,
+  escapeODataString,
+  isValidEntityName,
+  buildQueryString,
+} from "../src/domain/oData.js";
 
 test("clampTop: acota al rango [1, maxTop]", () => {
   assert.equal(clampTop(5, 200), 5);
@@ -21,6 +28,30 @@ test("composeFilter: une con 'and' y descarta nulos", () => {
 test("eq: construye igualdad OData", () => {
   assert.equal(eq("CardType", "cCustomer"), "CardType eq 'cCustomer'");
   assert.equal(eq("ItemCode", "PV-100"), "ItemCode eq 'PV-100'");
+});
+
+test("eq: escapa comillas simples del valor (anti-inyección)", () => {
+  assert.equal(eq("ItemCode", "A'B"), "ItemCode eq 'A''B'");
+  assert.equal(eq("ItemCode", 42), "ItemCode eq '42'");
+});
+
+test("escapeODataString: duplica comillas simples", () => {
+  assert.equal(escapeODataString("simple"), "simple");
+  assert.equal(escapeODataString("O'Reilly"), "O''Reilly");
+  assert.equal(escapeODataString("a'b'c"), "a''b''c");
+});
+
+test("isValidEntityName: acepta identificadores válidos y rechaza el resto", () => {
+  assert.equal(isValidEntityName("BusinessPartners"), true);
+  assert.equal(isValidEntityName("ItemStock"), true);
+  assert.equal(isValidEntityName("BP_2"), true);
+  assert.equal(isValidEntityName(""), false);
+  assert.equal(isValidEntityName("Orders/items"), false);
+  assert.equal(isValidEntityName("Items('x')"), false);
+  assert.equal(isValidEntityName("../etc"), false);
+  assert.equal(isValidEntityName("2Items"), false);
+  assert.equal(isValidEntityName(null), false);
+  assert.equal(isValidEntityName(42), false);
 });
 
 test("buildQueryString: sin opciones devuelve cadena vacía", () => {

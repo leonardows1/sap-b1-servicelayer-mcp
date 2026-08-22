@@ -29,14 +29,36 @@ export function composeFilter(...parts) {
 }
 
 /**
- * Construye una igualdad OData: `field eq 'value'`.
+ * Escapa un literal de cadena OData: duplica comillas simples.
+ * Previene romper el $filter o la URL cuando el valor contiene `'`.
+ *
+ * @param {string|number} value
+ * @returns {string}
+ */
+export function escapeODataString(value) {
+  return String(value).replace(/'/g, "''");
+}
+
+/**
+ * Construye una igualdad OData: `field eq 'value'` con el valor escapado.
  *
  * @param {string} field
  * @param {string|number} value
  * @returns {string}
  */
 export function eq(field, value) {
-  return `${field} eq '${value}'`;
+  return `${field} eq '${escapeODataString(value)}'`;
+}
+
+/**
+ * Valida un nombre de entidad OData: letra inicial, luego letras/dígitos/_.
+ * Previene inyección de rutas (ej: "BusinessPartners/..." o "Items('x')").
+ *
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isValidEntityName(name) {
+  return typeof name === "string" && /^[A-Za-z][A-Za-z0-9_]*$/.test(name);
 }
 
 /**

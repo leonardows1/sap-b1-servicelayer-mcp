@@ -26,6 +26,21 @@ test("config: sin SAP_B1_SERVER_URL lanza ConfigurationError", () => {
   assert.throws(() => loadConfig({ SAP_B1_SERVER_URL: "  " }), ConfigurationError);
 });
 
+test("config: credenciales vacías lanzan ConfigurationError", () => {
+  assert.throws(
+    () => loadConfig({ ...BASE, SAP_B1_DATABASE: "" }),
+    /SAP_B1_DATABASE no configurado/
+  );
+  assert.throws(
+    () => loadConfig({ ...BASE, SAP_B1_USERNAME: "  " }),
+    /SAP_B1_USERNAME no configurado/
+  );
+  assert.throws(
+    () => loadConfig({ ...BASE, SAP_B1_PASSWORD: "" }),
+    /SAP_B1_PASSWORD no configurado/
+  );
+});
+
 test("config: booleanos — solo 'false' es falsy", () => {
   assert.equal(loadConfig({ ...BASE, SAP_B1_VERIFY_TLS: "false" }).verifyTls, false);
   assert.equal(loadConfig({ ...BASE, SAP_B1_VERIFY_TLS: "FALSE" }).verifyTls, false);

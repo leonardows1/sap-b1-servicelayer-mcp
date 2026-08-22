@@ -1,3 +1,5 @@
+import { InvalidArgumentError } from "../../domain/errors.js";
+import { escapeODataString, isValidEntityName } from "../../domain/oData.js";
 import { ensureSuccess } from "../helpers.js";
 
 /**
@@ -19,24 +21,51 @@ export function createWriteService(client) {
     return res.body;
   };
 
+  /**
+   * Valida el nombre de entidad y construye la ruta de recurso con clave
+   * escapada OData. Evita inyección de rutas y comillas sin escapar.
+   *
+   * @param {string} entity
+   * @param {string} id
+   * @returns {string} ruta, ej: /Orders(123) o /BusinessPartners('C001')
+   */
+  const resourcePath = (entity, id) => {
+    if (!isValidEntityName(entity)) {
+      throw new InvalidArgumentError(`entity inválida: ${entity}`);
+    }
+    if (typeof id !== "string" || id.length === 0) {
+      throw new InvalidArgumentError("id es requerido");
+    }
+    return `/${entity}('${escapeODataString(id)}')`;
+  };
+
   return {
     /**
      * @param {string} entity
      * @param {object} payload
      */
-    create: (entity, payload) => send("POST", `/${entity}`, payload),
+    create: (entity, payload) => {
+      if (!isValidEntityName(entity)) {
+        throw new InvalidArgumentError(`entity inválida: ${entity}`);
+      }
+      return send("POST", `/${entity}`, payload);
+    },
 
     /**
      * @param {string} entity
      * @param {string} id clave del registro (ej: CardCode)
      * @param {object} payload
      */
-    update: (entity, id, payload) => send("PATCH", `/${entity}('${id}')`, payload),
+    update: (entity, id, payload) => send("PATCH", resourcePath(entity, id), payload),
 
     /**
      * @param {string} entity
      * @param {string} id
+     * @returns {Promise<{deleted: boolean}>}
      */
-    remove: (entity, id) => send("DELETE", `/${entity}('${id}')`, null),
+    remove: async (entity, id) => {
+      await send("DELETE", resourcePath(entity, id), null);
+      return { deleted: true };
+    },
   };
 }

@@ -138,8 +138,6 @@ export function registerTools(
       entity: z.string().describe("Entidad OData (ej: BusinessPartners)"),
       id: z.string().describe("Clave del registro (ej: CardCode, DocEntry)"),
     },
-    handle(async ({ entity, id }) =>
-      serialize((await writeService.remove(entity, id)) ?? { deleted: true })
-    )
+    handle(async ({ entity, id }) => serialize(await writeService.remove(entity, id)))
   );
 }

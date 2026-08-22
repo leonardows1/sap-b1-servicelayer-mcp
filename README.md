@@ -84,6 +84,9 @@ Reiniciar opencode después de guardar la configuración.
 - Credenciales y cookies de sesión nunca se registran en logs.
 - El proceso solo se comunica con `SAP_B1_SERVER_URL`.
 - En modo `READONLY=true` los tools de escritura no se registran: es imposible crear/actualizar/eliminar registros, por diseño.
+- Configuración validada al arrancar: faltan `SAP_B1_SERVER_URL`, `SAP_B1_DATABASE`, `SAP_B1_USERNAME` o `SAP_B1_PASSWORD` → el proceso aborta con mensaje claro.
+- Nombres de entidad validados (`^[A-Za-z][A-Za-z0-9_]*$`): no se pueden inyectar rutas (ej: `BusinessPartners/...`).
+- Valores de clave y filtros escapados en OData (comillas simples duplicadas): un `id` o `ItemCode` con `'` no rompe la URL ni el `$filter`.
 - La contraseña queda en texto plano en la configuración del cliente MCP. Considerar un secret manager si se comparte el repositorio.
 - `npx github:` no tiene versionado semver: cada ejecución toma la última versión del branch `main`. Tras actualizar el repo, usar `npm cache clean --force` para forzar la recarga.
 
@@ -125,7 +128,9 @@ sap-b1-servicelayer-mcp/
 │   ├── config.test.js
 │   ├── oData.test.js
 │   ├── cookies.test.js
-│   └── client.test.js
+│   ├── client.test.js
+│   ├── services.test.js          # casos de uso con cliente fake (anti-inyección)
+│   └── tools.test.js             # integración MCP in-memory (registro y llamadas)
 ├── .gitignore
 └── README.md
 ```

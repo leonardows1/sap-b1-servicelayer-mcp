@@ -1,5 +1,5 @@
 import { InvalidArgumentError } from "../../domain/errors.js";
-import { buildQueryString } from "../../domain/oData.js";
+import { buildQueryString, isValidEntityName } from "../../domain/oData.js";
 import { ensureOk, unwrapValue } from "../helpers.js";
 
 /**
@@ -16,7 +16,9 @@ export function createQueryService(client, maxTop) {
      * @returns {Promise<unknown>} arreglo desenvuelto (`value`) o el cuerpo de la respuesta
      */
     async query(entity, options = {}) {
-      if (!entity) throw new InvalidArgumentError("entity es requerido");
+      if (!isValidEntityName(entity)) {
+        throw new InvalidArgumentError(`entity inválida: ${entity}`);
+      }
       const res = await client.authorizedRequest(
         "GET",
         `/${entity}${buildQueryString({ ...options, maxTop })}`
