@@ -12,12 +12,13 @@ import { handle, serialize } from "./result.js";
  * @param {ReturnType<import("../../application/services/salesService.js")["createSalesService"]>} deps.salesService
  * @param {ReturnType<import("../../application/services/sessionService.js")["createSessionService"]>} deps.sessionService
  * @param {ReturnType<import("../../application/services/writeService.js")["createWriteService"]>} deps.writeService
+ * @param {ReturnType<import("../../application/services/metadataService.js")["createMetadataService"]>} deps.metadataService
  * @param {number} deps.maxTop límite máximo de $top (schema zod)
  * @param {boolean} deps.readonly si true, no registra tools de escritura
  */
 export function registerTools(
   server,
-  { queryService, catalogService, salesService, sessionService, writeService, maxTop, readonly }
+  { queryService, catalogService, salesService, sessionService, writeService, metadataService, maxTop, readonly }
 ) {
   const top = z.number().int().min(1).max(maxTop).optional();
   const topWithDefault = top.default(10);
@@ -93,6 +94,33 @@ export function registerTools(
   );
 
   server.tool(
+    "sap_list_entities",
+    "Lista todas las entidades OData expuestas por el ServiceLayer (desde $metadata, cacheado). Incluye tablas de usuario (prefijo @) y UDOs. filter: substring opcional para acotar.",
+    {
+      filter: z.string().optional().describe("Substring para acotar por nombre"),
+    },
+    handle(async ({ filter }) => serialize(await metadataService.listEntities(filter)))
+  );
+
+  server.tool(
+    "sap_get_entity_schema",
+    "Esquema de una entidad del ServiceLayer (propiedades, tipos y claves) para guiar $select y $filter. Ejemplo: sap_get_entity_schema('Orders').",
+    {
+      entity: z.string().describe("Entidad OData (ej: Orders, BusinessPartners, @MYPORTAL)"),
+    },
+    handle(async ({ entity }) => serialize(await metadataService.getEntitySchema(entity)))
+  );
+
+  server.tool(
+    "sap_list_actions",
+    "Lista los métodos de servicio (function imports) del ServiceLayer, con sus parámetros y tipo de retorno. Ejemplos: CompanyService_GetCompanyInfo, AccountCategoryService_GetCategoryList.",
+    {
+      filter: z.string().optional().describe("Substring para acotar por nombre"),
+    },
+    handle(async ({ filter }) => serialize(await metadataService.listActions(filter)))
+  );
+
+  server.tool(
     "sap_session_status",
     "Estado de la sesión actual contra el ServiceLayer de SAP B1.",
     {},
@@ -107,6 +135,19 @@ export function registerTools(
   );
 
   if (readonly) return;
+
+  server.tool(
+    "sap_call_action",
+    "Invoca un método de servicio del ServiceLayer (POST). Los function imports pueden tener efectos colaterales (Cancel, UpdateCompanyInfo, Import...). Solo disponible cuando SAP_B1_READONLY=false. Lista los métodos con sap_list_actions.",
+    {
+      action: z.string().describe("Nombre del function import (ej: CompanyService_GetCompanyInfo)"),
+      params: z
+        .record(z.any())
+        .optional()
+        .describe("Parámetros nombrados del método (ej: { PeriodCategoryParams: { AbsoluteEntry: 1 } })"),
+    },
+    handle(async ({ action, params }) => serialize(await metadataService.callAction(action, params ?? {})))
+  );
 
   server.tool(
     "sap_create",

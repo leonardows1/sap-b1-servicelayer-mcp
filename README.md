@@ -5,7 +5,8 @@ Servidor MCP (Model Context Protocol) para conectar asistentes de IA (opencode, 
 ## Características
 
 - **Solo lectura por defecto**: con `SAP_B1_READONLY=true` (default) solo se registran tools de consulta (`GET`). Los tools de escritura (`POST`/`PATCH`/`DELETE`) **no existen** en el servidor y no pueden llamarse.
-- **Modo escritura opcional**: con `SAP_B1_READONLY=false` se habilitan `sap_create`, `sap_update` y `sap_delete` para entidades del ServiceLayer.
+- **Descubrimiento total**: `sap_list_entities`, `sap_get_entity_schema` y `sap_list_actions` consultan `GET /$metadata` (descargado una sola vez por proceso y cacheado) y exponen las ~140 entidades CRUD (incluidas tablas de usuario `@` y UDOs) y los cientos de métodos de servicio del ServiceLayer.
+- **Modo escritura opcional**: con `SAP_B1_READONLY=false` se habilitan `sap_create`, `sap_update`, `sap_delete` para entidades del ServiceLayer y `sap_call_action` para métodos de servicio (pueden tener efectos colaterales).
 - **Ejecución vía `npx github:`**: sin instalación manual.
 - **Sesión gestionada**: login implícito con `CompanyDB`/usuario/contraseña, cookies `B1SESSION` + `ROUTEID` mantenidas en memoria (soporta ServiceLayer multi-nodo), re-login automático ante `401` y **logout garantizado** al cerrarse el proceso (además del tool `sap_logout`).
 - **TLS autofirmado**: soporte para certificados autofirmados del ServiceLayer (típico en entornos locales) mediante `SAP_B1_VERIFY_TLS=false`.
@@ -19,6 +20,9 @@ Servidor MCP (Model Context Protocol) para conectar asistentes de IA (opencode, 
 | Tool | Descripción |
 |---|---|
 | `sap_query` | GET genérico a cualquier entidad OData con `select`, `filter`, `top` (≤200), `skip`, `orderby`, `expand` |
+| `sap_list_entities` | Lista todas las entidades OData expuestas por el ServiceLayer (desde `$metadata`, cacheado); incluye tablas de usuario (`@`) y UDOs. `filter` opcional para acotar |
+| `sap_get_entity_schema` | Esquema de una entidad (propiedades, tipos y claves) para guiar `$select`/`$filter` |
+| `sap_list_actions` | Lista los métodos de servicio (function imports, ej: `CompanyService_GetCompanyInfo`) con sus parámetros |
 | `sap_get_business_partners` | Socios de negocio (clientes/proveedores), filtro por `card_type` |
 | `sap_get_items` | Artículos del catálogo |
 | `sap_get_sales_orders` | Pedidos de venta (con `expand` de líneas) |
@@ -33,6 +37,7 @@ Servidor MCP (Model Context Protocol) para conectar asistentes de IA (opencode, 
 | `sap_create` | Crea un registro en una entidad (`POST`) |
 | `sap_update` | Actualiza un registro por su clave (`PATCH`) |
 | `sap_delete` | Elimina un registro por su clave (`DELETE`) |
+| `sap_call_action` | Invoca un método de servicio (`POST`); puede tener efectos colaterales (Cancel, UpdateCompanyInfo, Import...) |
 
 ## Requisitos
 
@@ -106,7 +111,8 @@ sap-b1-servicelayer-mcp/
 │   │   └── config.js             # Configuración desde env, validada e inmutable
 │   ├── domain/
 │   │   ├── errors.js             # Excepciones tipadas (Configuration/InvalidArgument/ServiceLayer)
-│   │   └── oData.js              # Helpers puros: query string, filtros, clamp de $top
+│   │   ├── oData.js              # Helpers puros: query string, filtros, clamp de $top, validación de entidad
+│   │   └── edmx.js               # Parseo puro de $metadata: entity sets, esquemas, function imports
 │   ├── application/
 │   │   ├── ports.js              # Puerto ServiceLayerPort (contrato, DIP)
 │   │   ├── helpers.js            # ensureOk / ensureSuccess / unwrapValue
@@ -115,7 +121,8 @@ sap-b1-servicelayer-mcp/
 │   │       ├── catalogService.js # Socios de negocio y artículos (compone QueryService)
 │   │       ├── salesService.js   # Pedidos de venta y stock
 │   │       ├── sessionService.js # Estado y cierre de sesión
-│   │       └── writeService.js   # create / update / delete
+│   │       ├── writeService.js   # create / update / delete
+│   │       └── metadataService.js # Descubrimiento: $metadata cacheado, entidades, esquemas y actions
 │   └── infrastructure/
 │       ├── http/
 │       │   ├── httpClient.js     # Cliente HTTP mínimo (http/https)
@@ -127,9 +134,11 @@ sap-b1-servicelayer-mcp/
 ├── test/                         # node:test (sin dependencias externas)
 │   ├── config.test.js
 │   ├── oData.test.js
+│   ├── edmx.test.js              # parseo EDMX v3/v4 (entity sets, esquemas, function imports)
 │   ├── cookies.test.js
 │   ├── client.test.js
 │   ├── services.test.js          # casos de uso con cliente fake (anti-inyección)
+│   ├── metadataService.test.js   # descubrimiento y acciones con fake
 │   └── tools.test.js             # integración MCP in-memory (registro y llamadas)
 ├── .gitignore
 └── README.md

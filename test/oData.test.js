@@ -45,11 +45,16 @@ test("isValidEntityName: acepta identificadores válidos y rechaza el resto", ()
   assert.equal(isValidEntityName("BusinessPartners"), true);
   assert.equal(isValidEntityName("ItemStock"), true);
   assert.equal(isValidEntityName("BP_2"), true);
+  assert.equal(isValidEntityName("@MYPORTAL"), true);
+  assert.equal(isValidEntityName("@UDO_Order"), true);
   assert.equal(isValidEntityName(""), false);
   assert.equal(isValidEntityName("Orders/items"), false);
   assert.equal(isValidEntityName("Items('x')"), false);
   assert.equal(isValidEntityName("../etc"), false);
   assert.equal(isValidEntityName("2Items"), false);
+  assert.equal(isValidEntityName("@"), false);
+  assert.equal(isValidEntityName("@@X"), false);
+  assert.equal(isValidEntityName("@2X"), false);
   assert.equal(isValidEntityName(null), false);
   assert.equal(isValidEntityName(42), false);
 });

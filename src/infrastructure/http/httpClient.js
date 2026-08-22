@@ -9,7 +9,7 @@ import https from "node:https";
  * @param {string} options.baseUrl base del ServiceLayer (ej: https://host:50000/b1s/v1)
  * @param {boolean} options.verifyTls false para certificados autofirmados
  * @param {number} [options.timeoutMs] timeout por request (default 30s)
- * @returns {(method: string, path: string, body?: object|null, cookie?: string|null) => Promise<{status: number, body: object|null, setCookies: string[]}>}
+ * @returns {(method: string, path: string, body?: object|null, cookie?: string|null) => Promise<{status: number, body: object|null, text: string, setCookies: string[]}>}
  */
 export function createHttpClient({ baseUrl, verifyTls, timeoutMs = 30000 }) {
   const agent = new https.Agent({
@@ -55,6 +55,7 @@ export function createHttpClient({ baseUrl, verifyTls, timeoutMs = 30000 }) {
             resolve({
               status: res.statusCode,
               body: parsed,
+              text: raw,
               setCookies: res.headers["set-cookie"] || [],
             });
           });
